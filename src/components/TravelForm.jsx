@@ -142,18 +142,15 @@ import React, { useState, useEffect } from 'react';
         setLoadingAI(true);
         setStory('');
         try {
-          const transcription = await fetchYoutubeTranscription(
-            youtubeLink,
-            youtubeApiKey,
-          );
-          if (transcription) {
+          const text = await fetchYoutubeText(youtubeLink, youtubeApiKey);
+          if (text) {
             const aiGeneratedContent = await generateBlogContent(
-              transcription,
+              text,
               geminiApiKey,
             );
             setStory(aiGeneratedContent);
           } else {
-            alert('Could not fetch transcription for the given YouTube video.');
+            alert('Could not fetch captions or transcript for the given YouTube video.');
           }
         } catch (error) {
           console.error('Error creating blog with AI:', error);
@@ -163,7 +160,7 @@ import React, { useState, useEffect } from 'react';
         }
       };
 
-      const fetchYoutubeTranscription = async (youtubeLink, youtubeApiKey) => {
+      const fetchYoutubeText = async (youtubeLink, youtubeApiKey) => {
         const videoId = youtubeLink.match(
           /(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^?&]+)/,
         )[1];
@@ -188,7 +185,7 @@ import React, { useState, useEffect } from 'react';
               const transcriptResponse = await fetch(transcriptUrl);
               if (!transcriptResponse.ok) {
                 console.error(
-                  'Error fetching auto-generated transcript:',
+                  'Error fetching auto-generated captions:',
                   transcriptResponse.status,
                   transcriptResponse.statusText,
                 );
@@ -212,7 +209,7 @@ import React, { useState, useEffect } from 'react';
               const transcriptResponse = await fetch(transcriptUrl);
               if (!transcriptResponse.ok) {
                 console.error(
-                  'Error fetching manual transcript:',
+                  'Error fetching manual captions:',
                   transcriptResponse.status,
                   transcriptResponse.statusText,
                 );
@@ -223,6 +220,30 @@ import React, { useState, useEffect } from 'react';
                 ).then((res) => res.text());
                 return transcriptText;
               }
+            }
+          }
+
+          // Attempt to fetch transcriptions
+          apiUrl = `https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${videoId}&key=${youtubeApiKey}`;
+          response = await fetch(apiUrl);
+          data = await response.json();
+
+          if (data.items && data.items.length > 0) {
+            const transcript = data.items[0];
+            const transcriptUrl = `https://www.googleapis.com/youtube/v3/captions/${transcript.id}?part=snippet&key=${youtubeApiKey}`;
+            const transcriptResponse = await fetch(transcriptUrl);
+            if (!transcriptResponse.ok) {
+              console.error(
+                'Error fetching transcript:',
+                transcriptResponse.status,
+                transcriptResponse.statusText,
+              );
+            } else {
+              const transcriptData = await transcriptResponse.json();
+              const transcriptText = await fetch(
+                transcriptData.snippet.trackUrl,
+              ).then((res) => res.text());
+              return transcriptText;
             }
           }
 
@@ -240,11 +261,11 @@ import React, { useState, useEffect } from 'react';
             return videoDetailsData.items[0].snippet.description;
           }
 
-          alert('No transcript or description found for this video.');
+          alert('No captions, transcript, or description found for this video.');
           return null;
         } catch (error) {
-          console.error('Error fetching YouTube transcript:', error);
-          alert('Failed to fetch YouTube transcript. Please check the console for details.');
+          console.error('Error fetching YouTube data:', error);
+          alert('Failed to fetch YouTube data. Please check the console for details.');
           return null;
         }
       };
@@ -254,7 +275,7 @@ import React, { useState, useEffect } from 'react';
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=' +
           geminiApiKey;
 
-        const prompt = `Generate a travel blog post based on the following transcription: ${transcription}. The blog post should be between 500 and 700 words, and should be engaging and informative.`;
+        const prompt = `Generate a travel blog post based on the following text: ${transcription}. The blog post should be between 500 and 700 words, and should be engaging and informative.`;
 
         try {
           const response = await fetch(geminiApiUrl, {
